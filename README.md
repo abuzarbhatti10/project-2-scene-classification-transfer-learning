@@ -1,9 +1,9 @@
 # Project 2, Week 5: Scene Classification with Transfer Learning
 
-**Name:** M. Abuzar Shoukat
-**Subject:** Introduction to Applied AI (BS Electronics)
-**Lab:** Week 5, Neural Networks, Convolutions, and Transfer Learning
-**Platform:** Kaggle Notebook with GPU T4
+## **Name:** M. Abuzar Shoukat
+## **Subject:** Introduction to Applied AI (BS Electronics)
+## **Lab:** Week 5, Neural Networks, Convolutions, and Transfer Learning
+## **Platform:** Kaggle Notebook with GPU T4
 
 ## Overview
 
