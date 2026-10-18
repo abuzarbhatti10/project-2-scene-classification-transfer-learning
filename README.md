@@ -3,7 +3,6 @@
 ## **Name:** M. Abuzar Shoukat
 ## **Subject:** Introduction to Applied AI (BS Electronics)
 ## **Lab:** Week 5, Neural Networks, Convolutions, and Transfer Learning
-## **Platform:** Kaggle Notebook with GPU T4
 
 ## Overview
 
@@ -67,3 +66,13 @@ Fine-tuning improved validation accuracy by 3.1 percentage points.
 - Transfer learning gives high accuracy with very few trained parameters because pretrained layers already detect edges, textures and shapes.
 - Training accuracy can be lower than validation accuracy early on, because augmentation makes training images harder.
 - A high confidence score does not mean the prediction is right. Some errors came from images whose labels are genuinely ambiguous.
+
+## Week 6 Proposal
+
+**Problem:** I will build a CNN that classifies a brain MRI slice into four categories: glioma, meningioma, pituitary tumor, or no tumor. Reading MRI scans takes expert time, and a model that sorts scans or flags likely tumors could help prioritize cases for a radiologist.
+
+**Who benefits:** Radiologists and hospitals, especially where specialists are scarce, who could use it as a second opinion or triage aid. It is a decision-support tool, not a replacement for a doctor's diagnosis.
+
+**Dataset:** Brain Tumor MRI Dataset on Kaggle: https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset. It has 4 classes and 7,023 images (5,712 training and 1,311 testing, about 1,300 to 1,600 per class in training). It combines the figshare, SARTAJ and Br35H datasets. License: [copy from the Kaggle page].
+
+**Approach:** I will reuse the Week 5 pipeline: a pretrained ResNet-18, feature extraction first, then fine-tuning of the last block. Because this is medical data, I will focus on per-class recall, since missing a tumor is worse than a false alarm, and I will study which tumor types the model confuses. MRI slices differ from ImageNet photos, so I will compare how much fine-tuning helps over feature extraction alone.
