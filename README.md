@@ -1,4 +1,4 @@
-# Project 2, Week 5: Scene Classification with Transfer Learning
+# Project 2, Week 5: Scene Classification with Transfer Learning.
 
 ## **Name:** M. Abuzar Shoukat
 ## **Subject:** Introduction to Applied AI (BS Electronics)
