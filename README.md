@@ -76,3 +76,25 @@ Fine-tuning improved validation accuracy by 3.1 percentage points.
 **Dataset:** Brain Tumor MRI Dataset on Kaggle: https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset. It has 4 classes and 7,023 images (5,712 training and 1,311 testing, about 1,300 to 1,600 per class in training). It combines the figshare, SARTAJ and Br35H datasets. License: [copy from the Kaggle page].
 
 **Approach:** I will reuse the Week 5 pipeline: a pretrained ResNet-18, feature extraction first, then fine-tuning of the last block. Because this is medical data, I will focus on per-class recall, since missing a tumor is worse than a false alarm, and I will study which tumor types the model confuses. MRI slices differ from ImageNet photos, so I will compare how much fine-tuning helps over feature extraction alone.
+
+## Week 6: Brain Tumor MRI Classification with ResNet-18
+
+**Who benefits:** Radiologists and hospitals, especially where specialists are scarce, who could use the model as a second opinion or to prioritise scans for review. **Why it matters:** reading MRI scans takes expert time, and a missed tumor costs far more than a false alarm.
+
+**Dataset:** Brain Tumor MRI Dataset (Masoud Nickparvar, Kaggle): https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset. License: [paste the License field from the Kaggle page]. 7,200 images in 4 classes (glioma, meningioma, pituitary, notumor): 5,600 training (1,400 per class) and 1,600 test (400 per class). Labels come from the source datasets (the collection combines figshare, SARTAJ and Br35H); I did not verify them.
+
+**Data audit:** Imbalance ratio 1.0 (perfectly balanced). Images vary in size (150 to 1,000 pixels wide) and colour mode (some RGB, some grayscale), and these properties differ by class, so I treated them as a shortcut risk. 340 exact duplicate files (138 duplicate groups inside train, 15 inside test, none across). 485 of 1,600 test images (30%) have a near-duplicate in train, and the closest pairs are identical scans. File names have no patient id, so I split train and validation by MD5 group, with 0 shared groups (train 4,665, validation 935).
+
+**Imbalance handling:** Weighted loss, weights N / (K x n_c): glioma 0.987, meningioma 0.996, notumor 1.005, pituitary 1.013 (almost no effect because the data is balanced).
+
+**Results (test set, used once):** Macro-F1 0.905, accuracy 0.907. Recall per class: glioma 0.738 (weakest), meningioma 0.940, notumor 1.000, pituitary 0.950. Validation macro-F1 rose from 0.815 (head only) to 0.948 (after fine-tuning layer4). 40 of 1,200 tumor scans (30 glioma, 10 meningioma) were called "notumor". Glioma was most often confused with meningioma (74 images).
+
+**Grad-CAM:** In six heatmaps (three correct, three wrong) the model looked at brain tissue and not at borders or margins, so I found no border or background shortcut. This is limited evidence: Grad-CAM is coarse and the heat was broad and central. All three wrong examples were sagittal slices, which may hint at a scan-plane cue.
+
+**Limitations:** Public data from three merged sources, 2D slices only, unknown scanners, hospitals and patient demographics, no patient ids. The test score is probably optimistic because of the duplicate leak. **Not for clinical diagnosis or for ruling out a tumor.**
+
+**Responsibility questions**
+1. **Who could be harmed, and how?** Patients whose tumor is missed: the model called 40 of 1,200 tumor scans "no tumor", and glioma recall is only 0.738, so a patient could be reassured wrongly and treated late. Patients with false alarms (meningioma precision is 0.805) could face anxiety and unnecessary tests.
+2. **Where was the model not validated?** On new hospitals, scanners and patient groups, on 3D scans or whole studies, on children, and on rare tumor types. Only one public dataset was used, 30% of its test images are copies of training images, and there is no patient-level split.
+3. **What is the human role?** A radiologist reviews every scan and makes the diagnosis. The model only orders the work or offers a second opinion, and a "no tumor" prediction must never be used to dismiss a scan.
+4. **What evidence would change my conclusions?** A lower score on the test images without a near-duplicate in train, a patient-level split, or an external hospital dataset; Grad-CAM showing attention on non-anatomy; or notumor recall falling after cropping the margins. Any of these would mean the 0.905 overstates real performance.
