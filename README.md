@@ -98,3 +98,74 @@ Fine-tuning improved validation accuracy by 3.1 percentage points.
 2. **Where was the model not validated?** On new hospitals, scanners and patient groups, on 3D scans or whole studies, on children, and on rare tumor types. Only one public dataset was used, 30% of its test images are copies of training images, and there is no patient-level split.
 3. **What is the human role?** A radiologist reviews every scan and makes the diagnosis. The model only orders the work or offers a second opinion, and a "no tumor" prediction must never be used to dismiss a scan.
 4. **What evidence would change my conclusions?** A lower score on the test images without a near-duplicate in train, a patient-level split, or an external hospital dataset; Grad-CAM showing attention on non-anatomy; or notumor recall falling after cropping the margins. Any of these would mean the 0.905 overstates real performance.
+## Week 7: Text and Multimodal AI
+
+- Text classifier: SMS Spam Collection, 5,572 texts, macro-F1 0.974 (word) vs 0.982 (char)
+- Top positive / negative features: [call, txt, free, text, reply] / [my, me, ok, that, it]
+- NER on my domain: out-of-the-box F1 0.486 -> with entity ruler 0.811 (held-out sentences; provided set 0.533 -> 0.875)
+- Regex fields extracted: cnic, mobile, amount, date, email, invoice, scan_id, age; false positives tested: 5 negative tests, all passed (9/9 tests)
+- OCR: CER raw 0.000 -> after correction rules 0.000 on a clean synthetic invoice (simulated OCR errors: 0.062 / 0.059 / 0.143 -> 0.000)
+- Pipeline: image model + text evidence -> JSON record (example below)
+- Privacy: CNIC, phone, and email masked before logging
+
+### Overview
+This week I gave my Project 2 system (a brain MRI classifier from Week 6) the ability to read. Every component was measured with a number: TF-IDF was reproduced by hand, a spam classifier was compared with word and character n-grams, an entity extractor was scored against a gold set and improved with rules, regex fields were tested with negative cases, OCR quality was measured with character error rate (CER), and finally the image model and the text around it were combined into one privacy-masked JSON record.
+
+### Results
+
+| Component | Measurement | Result |
+|---|---|---|
+| TF-IDF by hand | d1 weights and cosine(d2, d3) | matches scikit-learn exactly; cosine 0.544 |
+| Spam classifier (word 1-2 grams) | macro-F1 / spam precision / spam recall | 0.974 / 0.979 / 0.933 |
+| Spam classifier (char 2-5 grams) | macro-F1 / spam precision / spam recall | 0.982 / 0.986 / 0.953 |
+| NER, provided gold set (16 entities) | F1 before -> after entity ruler | 0.533 -> 0.875 |
+| NER, my held-out hospital sentences (19 entities) | F1 before -> after entity ruler | 0.486 -> 0.811 |
+| Regex fields | tests passed (incl. 5 negative tests) | 9 / 9 |
+| OCR repair (3 simulated errors) | CER before -> after | 0.062 / 0.059 / 0.143 -> 0.000 |
+| OCR on synthetic invoice (EasyOCR) | CER raw -> after rules | 0.000 -> 0.000 |
+| Image model sanity check (25 test images per class) | accuracy | 92 / 100 (glioma 20/25) |
+
+### What I found
+- **Accuracy is the wrong metric for spam.** Only 13.4% of the messages are spam, so an "always ham" model already scores 86.6%. I used macro-F1 and spam recall instead.
+- **Character n-grams were slightly better** (macro-F1 0.982 vs 0.974) but used about 3x more features. On my tricky messages (disguised and Roman Urdu spam) they were not more robust, because intact English cue words such as "txt" and "claim" carried the signal for the word model. Both models miss Roman Urdu spam that contains no English cues, since they were trained on English text only.
+- **Some top features are shortcuts**, for example "to", "your" and "uk", and the ham-side tokens "gt" and "lt", which look like leftovers of HTML-escaped placeholders.
+- **Out of the box, spaCy misreads local text.** It labelled "Engro Fertilizers" a PERSON, a date a GPE and a mobile number a DATE. A handful of rules for local organisations, PKR amounts and dd/mm/yyyy dates raised F1 from 0.533 to 0.875.
+- **Rules were written from 5 sentences and scored on 5 other sentences** to avoid an optimistic result. Remaining errors are mostly person names and span boundaries, which I would fix with a model trained on annotated hospital text, while fixed formats (phones, dates, amounts) stay with regex.
+- **Regex needs negative tests.** My first scan-ID pattern `MRI-\d+` matched "MRI-12" and a 7-digit number. The final pattern `\bMRI-\d{6}\b` matches only a complete 6-digit ID.
+- **OCR:** simple context rules (letter O between digits becomes 0, "N0." becomes "No.") repaired all simulated errors. The clean synthetic invoice was read perfectly, so a real phone photo will give a much higher CER.
+- **The image model is not enough on its own.** On a glioma test image the image model gave 0.97 to meningioma, but the symptoms in the note (headache, vomiting, blurred vision) still triggered a REFER decision. Glioma was the weakest class in my 100-image check (80%).
+
+### Example output
+The note is masked before any extraction, so the phone number never appears in the record.
+
+```json
+{
+  "image": "Te-gl_16.jpg",
+  "image_probabilities": {"glioma": 0.03, "meningioma": 0.97, "notumor": 0.0, "pituitary": 0.0},
+  "note_masked": "Patient aged 45, severe headache for 2 weeks with vomiting and blurred vision. Seen at PIMS Islamabad on 12/09/2026. Mobile [PHONE].",
+  "text_evidence": {
+    "entities": [["45", "DATE"], ["2 weeks", "DATE"], ["PIMS", "ORG"], ["12/09/2026", "DATE"]],
+    "fields": {"date": ["12/09/2026"], "age": ["45"]},
+    "urgent_terms": ["headache", "vomiting", "blurred vision"]
+  },
+  "decision": "REFER",
+  "reasons": ["note mentions: headache, vomiting, blurred vision"],
+  "disclaimer": "Decision support only; a qualified human decides."
+}
+```
+
+### Privacy
+CNIC numbers, mobile numbers and email addresses are replaced with `[CNIC]`, `[PHONE]` and `[EMAIL]` **before** entity and field extraction. If extraction runs on the original note, the identifiers leak into the entities and fields even though the displayed note is masked. I checked the final JSON and it contains no phone digits. Hospital names and visit dates are not masked.
+
+### Limitations
+- The spam classifier is trained on English SMS only; Roman Urdu spam is mostly missed.
+- NER rules cover only organisations I listed. They would not fire for unseen hospitals, and the held-out score is still somewhat optimistic because hospital names repeat across my sentences.
+- The image model misclassifies about 1 in 5 gliomas in my sample, and "positive = glioma" would miss other tumour types. A better "must not miss" score is P(any tumour) = 1 - P(notumor).
+- The OCR test used a clean synthetic invoice, not real phone photos.
+
+### How to run
+1. Create a Kaggle notebook named "Week 7 - Text and Multimodal" with Internet turned On (EasyOCR downloads its models on first use).
+2. Add these datasets: SMS Spam Collection Dataset (uciml), Brain Tumor MRI Dataset (masoudnickparvar) and my private `week6-model` dataset containing `week6_model.pt`.
+3. Run the notebook top to bottom. It uses spaCy (`en_core_web_sm`), scikit-learn, EasyOCR, PyTorch and torchvision.
+
+*This is a student project. It is decision support only, not a medical device or a diagnosis.*
