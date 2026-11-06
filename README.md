@@ -1,4 +1,4 @@
-# Project 2
+# Project 2: Brain Tumor MRI Classifier API
 ## Week 5: Scene Classification with Transfer Learning.
 
 ## **Name:** M. Abuzar Shoukat
@@ -170,3 +170,54 @@ CNIC numbers, mobile numbers and email addresses are replaced with `[CNIC]`, `[P
 3. Run the notebook top to bottom. It uses spaCy (`en_core_web_sm`), scikit-learn, EasyOCR, PyTorch and torchvision.
 
 *This is a student project. It is decision support only, not a medical device or a diagnosis.*
+
+# Week 8: Project 2 API (Brain Tumor MRI Classifier)
+## API usage
+Run: `uvicorn app:app`, then open http://127.0.0.1:8000/docs
+- GET /health: status, model_loaded, classes
+- POST /predict: MRI image (JPEG/PNG) -> label, probabilities, latency_ms
+- POST /analyze: image + clinical note -> prediction, masked note
+  (CNIC and phone replaced by [CNIC]/[PHONE]), urgent terms, decision
+  (REFER/ROUTINE), reasons, disclaimer
+
+Example:
+curl.exe -X POST http://127.0.0.1:8000/predict -F "file=@sample.jpeg;type=image/jpeg"
+
+## Test results
+$ pytest -q test_api.py
+........ [100%]
+8 passed, 1 warning in 10.62s
+
+## Benchmark
+Hardware: Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz, 2 cores, 7.9 GB RAM, CPU-only PyTorch, 1 uvicorn worker.
+n=50 requests: p50 = 90 ms, p95 = 148 ms, max = 279 ms.
+Throughput with 1 worker is about 9.9 requests/s.
+
+Little's law: at p50 = 0.09 s one worker handles about 1/0.09 = 11 requests/s,
+which is about 960,000 requests/day at 100% utilization. At a realistic
+50-70% utilization it is roughly 500,000-670,000 requests/day.
+
+## Bad input tried beyond the tests
+I sent /analyze without the required "note" field. The API returned
+422 Unprocessable Entity: {"detail":[{"type":"missing","loc":["body","note"],"msg":"Field required","input":null}]}.
+
+## Check Your Understanding
+1. A PDF sent to /predict should get 415 Unsupported Media Type. It is a client
+   mistake (wrong file type), so a 4xx code is right. A 500 would mean the
+   server crashed, which would be a bug in my code, and it would hide the real
+   problem from the client.
+2. Loading the model takes seconds and a lot of memory. In lifespan it loads once
+   at server start and every request reuses it. Inside the endpoint it would be
+   reloaded on every request, making each call slow and wasting RAM.
+3. A p50 of 40 ms with a p95 of 400 ms means most requests are fast but about
+   1 in 20 is 10 times slower. The average hides this. I would check queueing
+   (many requests waiting for one worker), large images, garbage collection,
+   background processes using the CPU, and cold-start effects.
+4. 500,000 requests/day is about 5.8 requests/s on average. Peak is 5 times
+   that, about 29 requests/s. At 25 requests/s per worker, 29/25 = 1.16, so
+   I need 2 workers.
+5. An async def endpoint runs on the single event loop thread. Model inference is
+   heavy CPU work that does not yield, so while it runs the loop cannot serve
+   other requests (even /health). run_in_threadpool moves it to another thread
+   and keeps the loop free.
+6. A team of n people has n(n-1)/2 channels. For 4 people: 4 x 3 / 2 = 6 channels.
